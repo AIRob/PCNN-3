@@ -113,6 +113,6 @@ int main(int argc, char* argv[]){
     return 1;
   };
 
-  delete stimu;
+  free(stimu);
   return 0;
 }

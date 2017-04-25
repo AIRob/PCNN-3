@@ -245,13 +245,13 @@ int pcnn_gpu(
 
   cudaDeviceReset();
 
-  delete weights;
-  delete F;
-  delete L;
-  delete U;
-  delete T;
-  delete Y;
-  delete tmpY;
+  free(weights);
+  free(F);
+  free(L);
+  free(U);
+  free(T);
+  free(Y);
+  free(tmpY);
 
   return 0;
 }
@@ -379,13 +379,13 @@ int pcnn(
     }
   }
 
-  delete weights;
-  delete F;
-  delete L;
-  delete U;
-  delete T;
-  delete Y;
-  delete tmpY;
+  free(weights);
+  free(F);
+  free(L);
+  free(U);
+  free(T);
+  free(Y);
+  free(tmpY);
 
   return 0;
 }
