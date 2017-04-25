@@ -99,19 +99,24 @@ int main(int argc, char* argv[]){
   };
 
   int ret;
+
+  std::cout << "PCNN on CPU start ..." << std::endl;
   ret = pcnn(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
 
   if(ret != 0){
     std::cout << "ERROR" << std::endl;
     return 1;
   };
+  std::cout << "PCNN on CPU end.\n\n" << std::endl;
 
+  std::cout << "PCNN on GPU start ..." << std::endl;
   ret = pcnn_gpu(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
 
   if(ret != 0){
     std::cout << "ERROR" << std::endl;
     return 1;
   };
+  std::cout << "PCNN on GPU end.\n\n" << std::endl;
 
   free(stimu);
   return 0;

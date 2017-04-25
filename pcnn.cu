@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <iomanip>
 
 #include <cuda_runtime.h>
 #include <stdio.h>
@@ -84,15 +85,16 @@ int pcnn_gpu(
   std::ofstream writing_file;
   if(output_icon_to_file_flag != 0){
     char file_name[100];
-    sprintf(file_name, "gpu_%s", icon_to_file);
+    sprintf(file_name, "%s.gpu", icon_to_file);
     writing_file.open(file_name, std::ios::out);
 
-    writing_file << "t, sum_of_fires, elapsed\n";
+    //writing_file << "t, sum_of_fires, elapsed\n";
+    writing_file << "t, sum_of_fires\n";
   }
 
   char directory_name[100];
   if(output_images_to_file_flag != 0){
-    sprintf(directory_name, "gpu_%s", images_to_file);
+    sprintf(directory_name, "%s_gpu", images_to_file);
     struct stat st;
     if(stat(directory_name, &st) != 0){
       mkdir(directory_name, 0755);
@@ -219,17 +221,18 @@ int pcnn_gpu(
         }
       }
     }
-    std::cout << "sum_of_fires: " << icon;
+    std::cout << "sum_of_fires: " << std::setw(10) << icon << "\t";
     iElaps = cpuSecond() - iStart;
-    std::cout << " Elapsed: " << iElaps << std::endl;
+    std::cout << "Elapsed: " << iElaps << std::endl;
 
     if(output_icon_to_file_flag != 0){
-      writing_file << t << ", " << icon << ", " << iElaps << "\n";
+      //writing_file << t << ", " << icon << ", " << iElaps << "\n";
+      writing_file << t << ", " << icon << "\n";
     }
 
     if(output_images_to_file_flag != 0){
       char path[256];
-      sprintf(path, "%s/%s_%3d.png", directory_name, directory_name, t);
+      sprintf(path, "%s/%s_gpu_%03d.png", directory_name, directory_name, t);
       save_float_gray_image(tmpY, parameter->width, parameter->height, path);
     }
   }
@@ -271,14 +274,15 @@ int pcnn(
   std::ofstream writing_file;
   if(output_icon_to_file_flag != 0){
     char file_name[100];
-    sprintf(file_name, "cpu_%s", icon_to_file);
+    sprintf(file_name, "%s.cpu", icon_to_file);
     writing_file.open(file_name, std::ios::out);
-    writing_file << "t, sum_of_fires, elapsed\n";
+    //writing_file << "t, sum_of_fires, elapsed\n";
+    writing_file << "t, sum_of_fires\n";
   }
 
   char directory_name[256];
   if(output_images_to_file_flag != 0){
-    sprintf(directory_name, "cpu_%s", images_to_file);
+    sprintf(directory_name, "%s_cpu", images_to_file);
     struct stat st;
     if(stat(directory_name, &st) != 0){
       mkdir(directory_name, 0755);
@@ -364,17 +368,18 @@ int pcnn(
         }
       }
     }
-    std::cout << "sum_of_fires: " << icon;
+    std::cout << "sum_of_fires: " << std::setw(10) << icon << "\t";
     iElaps = cpuSecond() - iStart;
-    std::cout << " Elapsed: " << iElaps << std::endl;
+    std::cout << "Elapsed: " << iElaps << std::endl;
 
     if(output_icon_to_file_flag != 0){
-      writing_file << t << ", " << icon << ", " << iElaps << "\n";
+      //writing_file << t << ", " << icon << ", " << iElaps << "\n";
+      writing_file << t << ", " << icon << "\n";
     }
 
     if(output_images_to_file_flag != 0){
       char path[256];
-      sprintf(path, "%s/%s_%3d.png", directory_name, directory_name, t);
+      sprintf(path, "%s/%s_cpu_%03d.png", directory_name, directory_name, t);
       save_float_gray_image(tmpY, parameter->width, parameter->height, path);
     }
   }
