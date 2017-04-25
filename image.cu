@@ -38,7 +38,7 @@ cv::Mat* float2gray_image(float* data, int row, int col, int view_flag){
   return &image;
 }
 
-int save_float_gray_image(float* data, int row, int col, char* filepath){
+int save_float_gray_image(float* data, int col, int row, char* filepath){
   cv::Mat *image = float2gray_image(data, row, col, 0);
 
   save(image, filepath);
@@ -52,7 +52,7 @@ float* image2stimuF(char* filename, pcnn_params_t* parameter){
 
   if(!input_image.data){
     std::cout << "Inputting " << filename << " is failed." << std::endl;
-    return stimu;
+    return NULL;
   }
   view(&input_image);
 
@@ -64,7 +64,9 @@ float* image2stimuF(char* filename, pcnn_params_t* parameter){
 
   for(int y = 0; y < input_image.rows; y++){
     for(int x = 0; x < input_image.cols; x++){
-      stimu[(y * input_image.cols) + x] = input_image.data[y * input_image.step + x * input_image.elemSize()] / 255.0;
+      for(int c = 0; c < input_image.channels(); c++){
+        stimu[(y * input_image.cols) + x] = input_image.data[(y * input_image.step) + (x * input_image.elemSize()) + c ] / 255.0;
+      }
     }
   }
 

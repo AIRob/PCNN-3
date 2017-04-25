@@ -39,35 +39,37 @@ __global__ void pcnn_on_gpu(
   int x = threadIdx.x + blockIdx.x * blockDim.x;
   int y = threadIdx.y + blockIdx.y * blockDim.y;
 
-  // weighted input from Y values
-  float W = 0.0;
-  for(int i = 0; i < kernel_size; i++){
-    for(int j = 0; j < kernel_size; j++){
-      if(y + (i - (kernel_size/2)) < 0
-         || y + (i - (kernel_size/2)) >= height
-         || x + (j - (kernel_size/2)) < 0
-         || x + (j - (kernel_size/2)) >= width
-         ){
-        continue;
+  // Processing threads correspond to image pixels.
+  if((0 <= x && x < width) && (0 <= y && y < height)){
+    // weighted input from Y values
+    float W = 0.0;
+    for(int i = 0; i < kernel_size; i++){
+      for(int j = 0; j < kernel_size; j++){
+        if(y + (i - (kernel_size/2)) < 0
+           || y + (i - (kernel_size/2)) >= height
+           || x + (j - (kernel_size/2)) < 0
+           || x + (j - (kernel_size/2)) >= width
+           ){
+          continue;
+        }
+        W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
       }
-      W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
     }
-  }
 
-  //printf("x: %d, y: %d, W: %lf\n", x, y, W);
+    //printf("x: %d, y: %d, W: %lf\n", x, y, W);
 
-  dev_F[y * width + x] = dev_stimu[y * width + x];
-  dev_L[y * width + x] = expL * dev_L[y * width + x] + (vL * W);
-  dev_U[y * width + x] = dev_F[y * width + x] * (1.0 + beta * dev_L[y * width + x]);
+    dev_F[y * width + x] = dev_stimu[y * width + x];
+    dev_L[y * width + x] = (expL * dev_L[y * width + x]) + (vL * W);
+    dev_U[y * width + x] = dev_F[y * width + x] * (1.0 + beta * dev_L[y * width + x]);
+    dev_T[y * width + x] = (expT * dev_T[y * width + x]) + (vT * dev_Y[y * width + x]);
         
-  if(dev_U[y * width + x] > dev_T[y * width + x]){
-    dev_tmpY[y * width + x] = 1.0;
-  } else {
-    dev_tmpY[y * width + x] = 0.0;
+    if(dev_U[y * width + x] > dev_T[y * width + x]){
+      dev_tmpY[y * width + x] = 1.0;
+    } else {
+      dev_tmpY[y * width + x] = 0.0;
+    }
+    //__syncthreads();
   }
-
-  dev_T[y * width + x] = (expT * dev_T[y * width + x]) + (vT * dev_Y[y * width + x]);
-  __syncthreads();
 }
 
 int pcnn_gpu(
@@ -345,14 +347,13 @@ int pcnn(
         F[y * parameter->width + x] = stimu[y * parameter->width + x];
         L[y * parameter->width + x] = expL * L[y * parameter->width + x] + (parameter->vL * W);
         U[y * parameter->width + x] = F[y * parameter->width + x] * (1.0 + parameter->beta * L[y * parameter->width + x]);
-        
+        T[y * parameter->width + x] = (expT * T[y * parameter->width + x]) + (parameter->vT * Y[y * parameter->width + x]);
+
         if(U[y * parameter->width + x] > T[y * parameter->width + x]){
           tmpY[y * parameter->width + x] = 1.0;
         } else {
           tmpY[y * parameter->width + x] = 0.0;
         }
-
-        T[y * parameter->width + x] = (expT * T[y * parameter->width + x]) + (parameter->vT * Y[y * parameter->width + x]);
       }
     }
 
