@@ -20,3 +20,5 @@ clean:
 main.o: pcnn.h
 
 image.o: pcnn.h
+
+pcnn.o: pcnn.h
