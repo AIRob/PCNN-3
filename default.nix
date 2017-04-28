@@ -3,7 +3,7 @@ with import <nixpkgs> {};
 stdenv.mkDerivation{
   name = "pcnn";
 
-  src = "./"; 
+  src = ./.; 
 
   propagatedBuildInputs = [
     cudatoolkit
