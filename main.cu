@@ -25,6 +25,9 @@ int usage(char* program_name){
   std::cout << "Set the size of the weights kernel:" << std::endl;
   std::cout << "[-k|--kernel] kernel_size\n" << std::endl;
 
+  std::cout << "Run with CPU:" << std::endl;
+  std::cout << "[-C|--with-cpu]\n" << std::endl;
+
   std::cout << "Parameters setting options: " << std::endl;
   std::cout << "[--beta] beta" << std::endl;
   std::cout << "[--vF] vF" << std::endl;
@@ -49,6 +52,7 @@ int main(int argc, char* argv[]){
   char *icon_to_file;
   int output_images_to_file_flag = 0;
   char *images_to_file;
+  int with_cpu_flag = 0;
 
   parameter.beta = 0.03;
   parameter.vF = 0.01;
@@ -73,9 +77,10 @@ int main(int argc, char* argv[]){
       {"tauL",           required_argument, 0,  0  },
       {"tauT",           required_argument, 0,  0  },
       {"step",           required_argument, 0, 's' },
-      {"kernel",         required_argument, 0, 'k' }
+      {"kernel",         required_argument, 0, 'k' },
+      {"with-cpu",       no_argument,       0, 'C' }
     };
-    int option = getopt_long(argc, argv, "ho:O:s:k:",
+    int option = getopt_long(argc, argv, "ho:O:s:k:C",
                              long_options, &option_index);
     if(option == -1){
       break;
@@ -140,6 +145,10 @@ int main(int argc, char* argv[]){
         parameter.kernel_size = atoi(optarg);
         break;
 
+      case 'C':
+        with_cpu_flag = 1;
+        break;
+
       default:
         // Unknown option.
         bad_option_flag = 1;
@@ -179,23 +188,23 @@ int main(int argc, char* argv[]){
 
   int ret;
 
-  std::cout << "PCNN on CPU start ..." << std::endl;
-  ret = pcnn(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
-
+  if(with_cpu_flag != 0){
+    std::cout << "PCNN on CPU start ..." << std::endl;
+    ret = pcnn(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
+    if(ret == 0){
+      std::cout << "PCNN on CPU end.\n\n" << std::endl;
+    }
+  } else {
+    std::cout << "PCNN on GPU start ..." << std::endl;
+    ret = pcnn_gpu(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
+    if(ret == 0){
+      std::cout << "PCNN on GPU end.\n\n" << std::endl;
+    }
+  }
   if(ret != 0){
     std::cout << "ERROR" << std::endl;
     return 1;
   };
-  std::cout << "PCNN on CPU end.\n\n" << std::endl;
-
-  std::cout << "PCNN on GPU start ..." << std::endl;
-  ret = pcnn_gpu(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
-
-  if(ret != 0){
-    std::cout << "ERROR" << std::endl;
-    return 1;
-  };
-  std::cout << "PCNN on GPU end.\n\n" << std::endl;
 
   free(stimu);
   return 0;
