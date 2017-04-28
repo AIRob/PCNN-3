@@ -1,5 +1,9 @@
 project(pcnn)
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch sm_20 -ccbin g++-5)
+if(CXX)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch sm_20 -ccbin ${CXX})
+else()
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -arch sm_20 -ccbin g++)
+endif()
 
 find_package(CUDA REQUIRED)
 find_package(OpenCV REQUIRED)
