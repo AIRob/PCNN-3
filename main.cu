@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include <cuda_runtime.h>
+
 #include "pcnn.h"
 
 int usage(char* program_name){
@@ -196,6 +198,15 @@ int main(int argc, char* argv[]){
     }
   } else {
     std::cout << "PCNN on GPU start ..." << std::endl;
+
+    int deviceCount = 0;
+    cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
+    if(error_id != cudaSuccess){
+      std::cout << "cudaGetDeviceCount returned " << error_id << std::endl;
+      std::cout <<  "->" << cudaGetErrorString(error_id) << std::endl;
+      std::cout << "ERROR" << std::endl;
+      return 1;
+    }
     ret = pcnn_gpu(stimu, &parameter, output_icon_to_file_flag, icon_to_file, output_images_to_file_flag, images_to_file);
     if(ret == 0){
       std::cout << "PCNN on GPU end.\n\n" << std::endl;
