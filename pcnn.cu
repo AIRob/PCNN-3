@@ -62,7 +62,7 @@ __global__ void pcnn_on_gpu(
     dev_L[y * width + x] = (expL * dev_L[y * width + x]) + (vL * W);
     dev_U[y * width + x] = dev_F[y * width + x] * (1.0 + beta * dev_L[y * width + x]);
     dev_T[y * width + x] = (expT * dev_T[y * width + x]) + (vT * dev_Y[y * width + x]);
-        
+
     if(dev_U[y * width + x] > dev_T[y * width + x]){
       dev_tmpY[y * width + x] = 1.0;
     } else {
@@ -108,14 +108,22 @@ int pcnn_gpu(
   weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
   for(int y = 0; y < parameter->kernel_size; y++){
     for(int x = 0; x < parameter->kernel_size; x++){
-      weights[(y * parameter->kernel_size) + x] = 0.01 * (1.0 / (1.0 + sqrt(y^2 + x^2)));
+      if((x - (parameter->kernel_size / 2)) == 0 && (y - (parameter->kernel_size / 2)) == 0){
+        /* do nothing */
+      }else if((x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)) + (y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2)) <= (parameter->kernel_size / 2) * (parameter->kernel_size / 2)){
+        weights[(y * parameter->kernel_size) + x] = (1.0 / (parameter->hh
+          * sqrt((y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2))
+          + (x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)))));
+      } else {
+        weights[(y * parameter->kernel_size) + x] = 0.0;
+      }
     }
   }
 
   // Init status
   float *F, *L, *U, *T, *Y, *tmpY;
-  float expL = exp(parameter->tauL);
-  float expT = exp(parameter->tauT);
+  float expL = exp(-1.0 / parameter->tauL);
+  float expT = exp(-1.0 / parameter->tauT);
 
   F = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
   L = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
@@ -295,14 +303,22 @@ int pcnn(
   weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
   for(int y = 0; y < parameter->kernel_size; y++){
     for(int x = 0; x < parameter->kernel_size; x++){
-      weights[(y * parameter->kernel_size) + x] = 0.01 * (1.0 / (1.0 + sqrt(y^2 + x^2)));
+      if((x - (parameter->kernel_size / 2)) == 0 && (y - (parameter->kernel_size / 2)) == 0){
+        /* do nothing */
+      }else if((x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)) + (y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2)) <= (parameter->kernel_size / 2) * (parameter->kernel_size / 2)){
+        weights[(y * parameter->kernel_size) + x] = (1.0 / (parameter->hh
+          * sqrt((y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2))
+          + (x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)))));
+      } else {
+        weights[(y * parameter->kernel_size) + x] = 0.0;
+      }
     }
   }
 
   // Init status
   float *F, *L, *U, *T, *Y, *tmpY;
-  float expL = exp(parameter->tauL);
-  float expT = exp(parameter->tauT);
+  float expL = exp(-1.0 / parameter->tauL);
+  float expT = exp(-1.0 / parameter->tauT);
 
   F = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
   L = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
@@ -345,7 +361,7 @@ int pcnn(
         }
 
         F[y * parameter->width + x] = stimu[y * parameter->width + x];
-        L[y * parameter->width + x] = expL * L[y * parameter->width + x] + (parameter->vL * W);
+        L[y * parameter->width + x] = (expL * L[y * parameter->width + x]) + (parameter->vL * W);
         U[y * parameter->width + x] = F[y * parameter->width + x] * (1.0 + parameter->beta * L[y * parameter->width + x]);
         T[y * parameter->width + x] = (expT * T[y * parameter->width + x]) + (parameter->vT * Y[y * parameter->width + x]);
 

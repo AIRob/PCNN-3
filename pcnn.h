@@ -10,6 +10,7 @@ typedef struct {
   float vT;
   float tauL;
   float tauT;
+  float hh;
 
   int time_steps;
   int kernel_size;

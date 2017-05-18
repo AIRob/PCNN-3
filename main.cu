@@ -10,7 +10,7 @@
 int usage(char* program_name){
   std::cout << "Usage: ";
   std::cout << program_name << " [Options] image_file_path" << std::endl;
-  
+
   std::cout << "-- Options --" << std::endl;
   std::cout << "Print usage:" << std::endl;
   std::cout << "[-h|--help]\n" << std::endl;
@@ -32,11 +32,12 @@ int usage(char* program_name){
 
   std::cout << "Parameters setting options: " << std::endl;
   std::cout << "[--beta] beta" << std::endl;
-  std::cout << "[--vF] vF" << std::endl;
+  //std::cout << "[--vF] vF" << std::endl;
   std::cout << "[--vL] vL" << std::endl;
   std::cout << "[--vT] vT" << std::endl;
   std::cout << "[--tauL] tauL" << std::endl;
   std::cout << "[--tauT] tauT" << std::endl;
+  std::cout << "[--hh] h" << std::endl;
 
   return 0;
 }
@@ -66,6 +67,8 @@ int main(int argc, char* argv[]){
   parameter.time_steps = 100;
   parameter.kernel_size = 10;
 
+  parameter.hh = 1.0;
+
   while(1){
     int option_index = 0;
     static struct option long_options[] = {
@@ -80,6 +83,7 @@ int main(int argc, char* argv[]){
       {"tauT",           required_argument, 0,  0  },
       {"step",           required_argument, 0, 's' },
       {"kernel",         required_argument, 0, 'k' },
+      {"hh",             required_argument, 0,  0  },
       {"with-cpu",       no_argument,       0, 'C' }
     };
     int option = getopt_long(argc, argv, "ho:O:s:k:C",
@@ -111,6 +115,10 @@ int main(int argc, char* argv[]){
         }
         if(!strcmp(long_options[option_index].name, "tauT")){
           parameter.tauT = atof(optarg);
+          break;
+        }
+        if(!strcmp(long_options[option_index].name, "hh")){
+          parameter.hh = atof(optarg);
           break;
         }
         break;
@@ -180,13 +188,14 @@ int main(int argc, char* argv[]){
 
   std::cout << "PCNN parameters: " << std::endl;
   std::cout << "beta = " << parameter.beta << std::endl;
-  std::cout << "vF = " << parameter.vF << std::endl;
+  //std::cout << "vF = " << parameter.vF << std::endl;
   std::cout << "vL = " << parameter.vL << std::endl;
   std::cout << "vT = " << parameter.vT << std::endl;
   std::cout << "tauL = " << parameter.tauL << std::endl;
   std::cout << "tauT = " << parameter.tauT << std::endl;
   std::cout << "time_steps = " << parameter.time_steps << std::endl;
   std::cout << "kernel_size = " << parameter.kernel_size << std::endl;
+  std::cout << "h = " << parameter.hh << std::endl;
 
   int ret;
 
