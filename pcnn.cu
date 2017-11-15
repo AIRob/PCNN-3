@@ -11,13 +11,23 @@
 
 #include "pcnn.h"
 
+#define CHECK(call) {                                                   \
+  const cudaError_t error = call;                                       \
+  if(error != cudaSuccess){                                             \
+    std::cout << "Error: " << __FILE__ << __LINE__ << std::endl;        \
+    std::cout << "code:" << error << std::endl;                         \
+    std::cout << "reason: " << cudaGetErrorString(error) << std::endl;  \
+    exit(1);                                                            \
+  }                                                                     \
+}                                                                       \
+
 double cpuSecond(void){
   struct timeval tp;
   gettimeofday(&tp, NULL);
   return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
 }
 
-void getWeightMatrix(float* weights, int size, float hh){
+void getWeightMatrix(float *weights, int size, float hh){
   for(int y = 0; y < size; y++){
     for(int x = 0; x < size; x++){
       if((x - (size / 2)) == 0 && (y - (size / 2)) == 0){
@@ -34,38 +44,85 @@ void getWeightMatrix(float* weights, int size, float hh){
   }
 }
 
-__global__ void pcnn_on_gpu(
-  float* dev_stimu,
-  float* dev_weights,
-  float* dev_F,
-  float* dev_L,
-  float* dev_U,
-  float* dev_T,
-  float* dev_Y,
+__device__ void fire_sum_on_gpu(
   float* dev_tmpY,
-  float  beta,
-  float  vF,
-  float  vL,
-  float  vT,
-  float  expL,
-  float  expT,
-  int    width,
-  int    height,
-  int    kernel_size
+  unsigned int *fire,
+  unsigned int width,
+  unsigned int height
 ){
-  int x = threadIdx.x + blockIdx.x * blockDim.x;
-  int y = threadIdx.y + blockIdx.y * blockDim.y;
+  unsigned int tid = threadIdx.x;
+  unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if(idx >= width * height){
+    return;
+  }
+
+  float* impulse = dev_tmpY + blockIdx.x * blockDim.x;
+
+  for(int stride = 1; stride < blockDim.x; stride *= 2){
+    int index = 2 * stride * threadIdx.x;
+    if(index < width){
+      impulse[index] += impulse[index + stride];
+    }
+
+    __syncthreads();
+  }
+
+  if(tid == 0) fire[blockIdx.x] = (int)impulse[0];
+}
+
+__global__ void fire_renew_on_gpu(
+  float *dev_Y,
+  float *dev_tmpY,
+  unsigned int *fire,
+  unsigned int width,
+  unsigned int height
+){
+  unsigned int tid = threadIdx.x;
+  unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if(idx >= width * height){
+    return;
+  }
+
+  dev_Y[idx] = dev_tmpY[idx];
+  __syncthreads();
+
+  fire_sum_on_gpu(dev_tmpY, fire, width, height);
+}
+
+__global__ void pcnn_on_gpu(
+  float        *dev_stimu,
+  float        *dev_weights,
+  float        *dev_F,
+  float        *dev_L,
+  float        *dev_U,
+  float        *dev_T,
+  float        *dev_Y,
+  float        *dev_tmpY,
+  float         beta,
+  float         vF,
+  float         vL,
+  float         vT,
+  float         expL,
+  float         expT,
+  unsigned int  width,
+  unsigned int  height,
+  unsigned int  kernel_size
+){
+  unsigned int x = threadIdx.x + blockIdx.x * blockDim.x;
+  unsigned int y = threadIdx.y + blockIdx.y * blockDim.y;
 
   // Processing threads correspond to image pixels.
-  if((0 <= x && x < width) && (0 <= y && y < height)){
+  if((x < width) && (y < height)){
     // weighted input from Y values
     float W = 0.0;
     for(int i = 0; i < kernel_size; i++){
       for(int j = 0; j < kernel_size; j++){
-        if(y + (i - (kernel_size/2)) < 0
-           || y + (i - (kernel_size/2)) >= height
-           || x + (j - (kernel_size/2)) < 0
-           || x + (j - (kernel_size/2)) >= width
+        if((int)y + (i - ((int)kernel_size/2)) < 0
+           || (int)y + (i - ((int)kernel_size/2)) >= (int)height
+           || (int)x + (j - ((int)kernel_size/2)) < 0
+           || (int)x + (j - ((int)kernel_size/2)) >= (int)width
            ){
           continue;
         }
@@ -85,17 +142,16 @@ __global__ void pcnn_on_gpu(
     } else {
       dev_tmpY[y * width + x] = 0.0;
     }
-    //__syncthreads();
   }
 }
 
 int pcnn_gpu(
-  float* stimu,
-  pcnn_params_t* parameter,
+  float *stimu,
+  pcnn_params_t *parameter,
   int output_icon_to_file_flag,
-  char* icon_to_file,
+  char *icon_to_file,
   int output_images_to_file_flag,
-  char* images_to_file
+  char *images_to_file
 ){
   // Initialize
   double iStart;
@@ -120,8 +176,6 @@ int pcnn_gpu(
     }
   }
 
-  
-
   // Init status
   float *F, *L, *U, *T, *Y, *tmpY;
   float expL = exp(-1.0 / parameter->tauL);
@@ -135,7 +189,7 @@ int pcnn_gpu(
   tmpY = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
 
   // Get kernel
-  float* weights;
+  float *weights;
   weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
   getWeightMatrix(weights, parameter->kernel_size, parameter->hh);
   
@@ -151,45 +205,49 @@ int pcnn_gpu(
   }
 
   // Init for CUDA
-  float *dev_stimu;
-  float *dev_weights;
-  float *dev_F;
-  float *dev_L;
-  float *dev_U;
-  float *dev_T;
-  float *dev_Y;
-  float *dev_tmpY;
-  int   nBytes = sizeof(float) * parameter->width * parameter->height;
-  int   nWeightBytes = sizeof(float) * parameter->kernel_size * parameter->kernel_size;
+  float *dev_stimu, *dev_weights, *dev_F, *dev_L, *dev_U, *dev_T, *dev_Y, *dev_tmpY;
+  unsigned int nBytes = sizeof(float) * parameter->width * parameter->height;
+  unsigned int nWeightBytes = sizeof(float) * parameter->kernel_size * parameter->kernel_size;
 
-  cudaMalloc((float **)&dev_stimu, nBytes);
-  cudaMalloc((float **)&dev_weights, nWeightBytes);
-  cudaMalloc((float **)&dev_F, nBytes);
-  cudaMalloc((float **)&dev_L, nBytes);
-  cudaMalloc((float **)&dev_U, nBytes);
-  cudaMalloc((float **)&dev_T, nBytes);
-  cudaMalloc((float **)&dev_Y, nBytes);
-  cudaMalloc((float **)&dev_tmpY, nBytes);
+  CHECK(cudaMalloc((float **)&dev_stimu, nBytes));
+  CHECK(cudaMalloc((float **)&dev_weights, nWeightBytes));
+  CHECK(cudaMalloc((float **)&dev_F, nBytes));
+  CHECK(cudaMalloc((float **)&dev_L, nBytes));
+  CHECK(cudaMalloc((float **)&dev_U, nBytes));
+  CHECK(cudaMalloc((float **)&dev_T, nBytes));
+  CHECK(cudaMalloc((float **)&dev_Y, nBytes));
+  CHECK(cudaMalloc((float **)&dev_tmpY, nBytes));
+
+  // For parallel fire adding
+  unsigned int* fire;
+  unsigned int* dev_fire;
+  unsigned int fireBytes = sizeof(unsigned int) * parameter->height;
+  fire = (unsigned int*)malloc(fireBytes);
+  CHECK(cudaMalloc((unsigned int**)&dev_fire, fireBytes));
 
   // PCNN processing
   for(int t = 0; t < parameter->time_steps; t++){
     iStart = cpuSecond();
 
     // Data transfer from host to device
-    cudaMemcpy(dev_stimu, stimu, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_weights, weights, nWeightBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_F, F, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_L, L, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_U, U, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_T, T, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_Y, Y, nBytes, cudaMemcpyHostToDevice);
-    cudaMemcpy(dev_tmpY, tmpY, nBytes, cudaMemcpyHostToDevice);
+    CHECK(cudaMemcpy(dev_stimu, stimu, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_weights, weights, nWeightBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_F, F, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_L, L, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_U, U, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_T, T, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_Y, Y, nBytes, cudaMemcpyHostToDevice));
+    CHECK(cudaMemcpy(dev_tmpY, tmpY, nBytes, cudaMemcpyHostToDevice));
 
-    cudaDeviceSynchronize();
+    CHECK(cudaDeviceSynchronize());
 
     dim3 block(32, 32);
     dim3 grid((parameter->width + block.x - 1) / block.x,
               (parameter->height + block.y - 1) / block.y);
+    // There are width number of threads in a block
+    dim3 pixels_in_line(parameter->width, 1);
+    // Number of all data element
+    dim3 lines_grid(((parameter->width * parameter->height) + block.x - 1) / block.x, 1);
 
     pcnn_on_gpu<<<grid, block>>>(
                               dev_stimu,
@@ -210,34 +268,41 @@ int pcnn_gpu(
                               parameter->height,
                               parameter->kernel_size
                               );
-    cudaError_t error = cudaDeviceSynchronize();
-    if ( error != cudaSuccess){
-      std::cout << "Error: " << __FILE__ << __LINE__;
-      std::cout << "code: " << error << "reason: "<< cudaGetErrorString(error) << std::endl;
-    }
+    CHECK(cudaDeviceSynchronize());
 
     // Data transfer from device to host
-    //cudaMemcpy(stimu, dev_stimu, nBytes, cudaMemcpyDeviceToHost);
-    //cudaMemcpy(weights, dev_weights, nWeightBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(F, dev_F, nBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(L, dev_L, nBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(U, dev_U, nBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(T, dev_T, nBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost);
-    cudaMemcpy(tmpY, dev_tmpY, nBytes, cudaMemcpyDeviceToHost);
+    //CHECK(cudaMemcpy(stimu, dev_stimu, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(weights, dev_weights, nWeightBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(F, dev_F, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(L, dev_L, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(U, dev_U, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(T, dev_T, nBytes, cudaMemcpyDeviceToHost));
 
     // Get PCNN-Icon
-    int icon = 0;
-    std::cout << "t: " << t << "\t";
-    //float2gray_image(tmpY, parameter->width, parameter->height, 1);
     for(int y = 0; y < parameter->height; y++){
-      for(int x = 0; x < parameter->width; x++){
-        Y[y * parameter->width + x] = tmpY[y * parameter->width + x];
-        if(tmpY[y * parameter->width + x] > 0.0){
-          icon++;
-        }
-      }
+      fire[y] = 0;
     }
+    CHECK(cudaMemcpy(dev_fire, fire, fireBytes, cudaMemcpyHostToDevice));
+    fire_renew_on_gpu<<<lines_grid, pixels_in_line>>>(
+                                       dev_Y,
+                                       dev_tmpY,
+                                       dev_fire,
+                                       parameter->width,
+                                       parameter->height
+                                       );
+    CHECK(cudaDeviceSynchronize());
+
+    CHECK(cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(tmpY, dev_tmpY, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(fire, dev_fire, fireBytes, cudaMemcpyDeviceToHost));
+
+    unsigned int icon = 0;
+    std::cout << "t: " << t << "\t";
+    for(int y = 0; y < parameter->height; y++){
+      icon += fire[y];
+    }
+    //float2gray_image(tmpY, parameter->width, parameter->height, 1);
+
     std::cout << "sum_of_fires: " << std::setw(10) << icon << "\t";
     iElaps = cpuSecond() - iStart;
     std::cout << "Elapsed: " << iElaps << std::endl;
@@ -254,16 +319,17 @@ int pcnn_gpu(
     }
   }
 
-  cudaFree(dev_stimu);
-  cudaFree(dev_weights);
-  cudaFree(dev_F);
-  cudaFree(dev_L);
-  cudaFree(dev_U);
-  cudaFree(dev_T);
-  cudaFree(dev_Y);
-  cudaFree(dev_tmpY);
+  CHECK(cudaFree(dev_stimu));
+  CHECK(cudaFree(dev_weights));
+  CHECK(cudaFree(dev_F));
+  CHECK(cudaFree(dev_L));
+  CHECK(cudaFree(dev_U));
+  CHECK(cudaFree(dev_T));
+  CHECK(cudaFree(dev_Y));
+  CHECK(cudaFree(dev_tmpY));
+  CHECK(cudaFree(dev_fire));
 
-  cudaDeviceReset();
+  CHECK(cudaDeviceReset());
 
   free(weights);
   free(F);
@@ -272,17 +338,18 @@ int pcnn_gpu(
   free(T);
   free(Y);
   free(tmpY);
+  free(fire);
 
   return 0;
 }
 
 int pcnn(
-  float* stimu,
+  float *stimu,
   pcnn_params_t* parameter,
   int output_icon_to_file_flag,
-  char* icon_to_file,
+  char *icon_to_file,
   int output_images_to_file_flag,
-  char* images_to_file
+  char *images_to_file
 ){
   // Initialize
   double iStart;
@@ -306,7 +373,7 @@ int pcnn(
     }
   }
   // Get kernel
-  float* weights;
+  float *weights;
   weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
   getWeightMatrix(weights, parameter->kernel_size, parameter->hh);
 
@@ -341,12 +408,12 @@ int pcnn(
 
         // weighted input from Y values
         float W = 0.0;
-        for(int i = 0; i < parameter->kernel_size; i++){
-          for(int j = 0; j < parameter->kernel_size; j++){
-            if(y + (i - (parameter->kernel_size/2)) < 0
-               || y + (i - (parameter->kernel_size/2)) >= parameter->height
-               || x + (j - (parameter->kernel_size/2)) < 0
-               || x + (j - (parameter->kernel_size/2)) >= parameter->width
+        for(int i = 0; i < (int)parameter->kernel_size; i++){
+          for(int j = 0; j < (int)parameter->kernel_size; j++){
+            if(y + (i - ((int)parameter->kernel_size/2)) < 0
+               || y + (i - ((int)parameter->kernel_size/2)) >= (int)parameter->height
+               || x + (j - ((int)parameter->kernel_size/2)) < 0
+               || x + (j - ((int)parameter->kernel_size/2)) >= (int)parameter->width
                ){
               continue;
             }

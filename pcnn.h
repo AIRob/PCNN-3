@@ -12,10 +12,10 @@ typedef struct {
   float tauT;
   float hh;
 
-  int time_steps;
-  int kernel_size;
-  int width;
-  int height;
+  unsigned int time_steps;
+  unsigned int kernel_size;
+  unsigned int width;
+  unsigned int height;
 } pcnn_params_t;
 
 float* image2stimuF(char* filename, pcnn_params_t* parameter);
