@@ -78,7 +78,6 @@ __global__ void fire_renew_on_gpu(
   unsigned int width,
   unsigned int height
 ){
-  unsigned int tid = threadIdx.x;
   unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
   if(idx >= width * height){
@@ -110,38 +109,39 @@ __global__ void pcnn_on_gpu(
   unsigned int  height,
   unsigned int  kernel_size
 ){
-  unsigned int x = threadIdx.x + blockIdx.x * blockDim.x;
-  unsigned int y = threadIdx.y + blockIdx.y * blockDim.y;
+  unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  unsigned int x = threadIdx.x;
+  unsigned int y = blockIdx.x;
+
+  if(idx >= width * height){
+    return;
+  }
 
   // Processing threads correspond to image pixels.
-  if((x < width) && (y < height)){
-    // weighted input from Y values
-    float W = 0.0;
-    for(int i = 0; i < kernel_size; i++){
-      for(int j = 0; j < kernel_size; j++){
-        if((int)y + (i - ((int)kernel_size/2)) < 0
-           || (int)y + (i - ((int)kernel_size/2)) >= (int)height
-           || (int)x + (j - ((int)kernel_size/2)) < 0
-           || (int)x + (j - ((int)kernel_size/2)) >= (int)width
-           ){
-          continue;
-        }
-        W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
+  // weighted input from Y values
+  float W = 0.0;
+  for(int i = 0; i < kernel_size; i++){
+    for(int j = 0; j < kernel_size; j++){
+      if((int)y + (i - ((int)kernel_size/2)) < 0
+         || (int)y + (i - ((int)kernel_size/2)) >= (int)height
+         || (int)x + (j - ((int)kernel_size/2)) < 0
+         || (int)x + (j - ((int)kernel_size/2)) >= (int)width
+         ){
+        continue;
       }
+      W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
     }
+  }
+  //printf("x: %d, y: %d, W: %lf\n", x, y, W);
 
-    //printf("x: %d, y: %d, W: %lf\n", x, y, W);
+  dev_F[idx] = dev_stimu[idx];
+  dev_L[idx] = (expL * dev_L[idx]) + (vL * W);
+  dev_U[idx] = dev_F[idx] * (1.0 + beta * dev_L[idx]);
+  dev_T[idx] = (expT * dev_T[idx]) + (vT * dev_Y[idx]);
 
-    dev_F[y * width + x] = dev_stimu[y * width + x];
-    dev_L[y * width + x] = (expL * dev_L[y * width + x]) + (vL * W);
-    dev_U[y * width + x] = dev_F[y * width + x] * (1.0 + beta * dev_L[y * width + x]);
-    dev_T[y * width + x] = (expT * dev_T[y * width + x]) + (vT * dev_Y[y * width + x]);
-
-    if(dev_U[y * width + x] > dev_T[y * width + x]){
-      dev_tmpY[y * width + x] = 1.0;
-    } else {
-      dev_tmpY[y * width + x] = 0.0;
-    }
+  dev_tmpY[idx] = 0.0;
+  if(dev_U[idx] > dev_T[idx]){
+    dev_tmpY[idx] = 1.0;
   }
 }
 
@@ -241,15 +241,12 @@ int pcnn_gpu(
 
     CHECK(cudaDeviceSynchronize());
 
-    dim3 block(32, 32);
-    dim3 grid((parameter->width + block.x - 1) / block.x,
-              (parameter->height + block.y - 1) / block.y);
     // There are width number of threads in a block
     dim3 pixels_in_line(parameter->width, 1);
     // Number of all data element
-    dim3 lines_grid(((parameter->width * parameter->height) + block.x - 1) / block.x, 1);
+    dim3 lines_grid(((parameter->width * parameter->height) + pixels_in_line.x - 1) / pixels_in_line.x, 1);
 
-    pcnn_on_gpu<<<grid, block>>>(
+    pcnn_on_gpu<<<lines_grid, pixels_in_line>>>(
                               dev_stimu,
                               dev_weights,
                               dev_F,
