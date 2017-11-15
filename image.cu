@@ -48,7 +48,7 @@ int save_float_gray_image(float* data, int col, int row, char* filepath){
 
 float* image2stimuF(char* filename, pcnn_params_t* parameter){
   float* stimu = NULL;
-  cv::Mat input_image = imread(filename, cv::IMREAD_GRAYSCALE);
+  cv::Mat input_image = cv::imread(filename, cv::IMREAD_GRAYSCALE);
 
   if(!input_image.data){
     std::cout << "Inputting " << filename << " is failed." << std::endl;

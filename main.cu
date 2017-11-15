@@ -47,7 +47,7 @@ int main(int argc, char* argv[]){
   if(argc < 2){
     usage(argv[0]);
     return 1;
-  };
+  }
 
   pcnn_params_t parameter;
   int bad_option_flag = 0;
@@ -61,8 +61,8 @@ int main(int argc, char* argv[]){
   parameter.vF = 0.01;
   parameter.vL = 1.0;
   parameter.vT = 10.0;
-  parameter.tauL = -0.1;
-  parameter.tauT = -0.4;
+  parameter.tauL = 10.0;
+  parameter.tauT = 2.5;
 
   parameter.time_steps = 100;
   parameter.kernel_size = 10;
@@ -184,7 +184,7 @@ int main(int argc, char* argv[]){
   if(stimu == NULL){
     std::cout << "ERROR" << std::endl;
     return 1;
-  };
+  }
 
   std::cout << "PCNN parameters: " << std::endl;
   std::cout << "beta = " << parameter.beta << std::endl;
@@ -224,7 +224,7 @@ int main(int argc, char* argv[]){
   if(ret != 0){
     std::cout << "ERROR" << std::endl;
     return 1;
-  };
+  }
 
   free(stimu);
   return 0;

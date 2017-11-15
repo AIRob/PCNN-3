@@ -11,10 +11,27 @@
 
 #include "pcnn.h"
 
-double cpuSecond() {
+double cpuSecond(void){
   struct timeval tp;
   gettimeofday(&tp, NULL);
   return ((double)tp.tv_sec + (double)tp.tv_usec * 1.e-6);
+}
+
+void getWeightMatrix(float* weights, int size, float hh){
+  for(int y = 0; y < size; y++){
+    for(int x = 0; x < size; x++){
+      if((x - (size / 2)) == 0 && (y - (size / 2)) == 0){
+        /* self connection is 0.0 */
+        weights[(y * size) + x] = 0.0;
+      }else if((x - (size / 2)) * (x - (size / 2)) + (y - (size / 2)) * (y - (size / 2)) <= (size / 2) * (size / 2)){
+        weights[(y * size) + x] = (1.0 / (hh
+          * sqrt((y - (size / 2)) * (y - (size / 2))
+          + (x - (size / 2)) * (x - (size / 2)))));
+      } else {
+        weights[(y * size) + x] = 0.0;
+      }
+    }
+  }
 }
 
 __global__ void pcnn_on_gpu(
@@ -103,22 +120,7 @@ int pcnn_gpu(
     }
   }
 
-  // Get kernel
-  float* weights;
-  weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
-  for(int y = 0; y < parameter->kernel_size; y++){
-    for(int x = 0; x < parameter->kernel_size; x++){
-      if((x - (parameter->kernel_size / 2)) == 0 && (y - (parameter->kernel_size / 2)) == 0){
-        /* do nothing */
-      }else if((x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)) + (y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2)) <= (parameter->kernel_size / 2) * (parameter->kernel_size / 2)){
-        weights[(y * parameter->kernel_size) + x] = (1.0 / (parameter->hh
-          * sqrt((y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2))
-          + (x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)))));
-      } else {
-        weights[(y * parameter->kernel_size) + x] = 0.0;
-      }
-    }
-  }
+  
 
   // Init status
   float *F, *L, *U, *T, *Y, *tmpY;
@@ -132,6 +134,11 @@ int pcnn_gpu(
   Y = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
   tmpY = (float*)malloc(sizeof(float) * parameter->width * parameter->height);
 
+  // Get kernel
+  float* weights;
+  weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
+  getWeightMatrix(weights, parameter->kernel_size, parameter->hh);
+  
   for(int y = 0; y < parameter->height; y++){
     for(int x = 0; x < parameter->width; x++){
       F[(y * parameter->width) + x] = 0.0;
@@ -301,19 +308,7 @@ int pcnn(
   // Get kernel
   float* weights;
   weights = (float*)malloc(sizeof(float) * parameter->kernel_size * parameter->kernel_size);
-  for(int y = 0; y < parameter->kernel_size; y++){
-    for(int x = 0; x < parameter->kernel_size; x++){
-      if((x - (parameter->kernel_size / 2)) == 0 && (y - (parameter->kernel_size / 2)) == 0){
-        /* do nothing */
-      }else if((x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)) + (y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2)) <= (parameter->kernel_size / 2) * (parameter->kernel_size / 2)){
-        weights[(y * parameter->kernel_size) + x] = (1.0 / (parameter->hh
-          * sqrt((y - (parameter->kernel_size / 2)) * (y - (parameter->kernel_size / 2))
-          + (x - (parameter->kernel_size / 2)) * (x - (parameter->kernel_size / 2)))));
-      } else {
-        weights[(y * parameter->kernel_size) + x] = 0.0;
-      }
-    }
-  }
+  getWeightMatrix(weights, parameter->kernel_size, parameter->hh);
 
   // Init status
   float *F, *L, *U, *T, *Y, *tmpY;

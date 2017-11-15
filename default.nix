@@ -13,8 +13,6 @@ stdenv.mkDerivation{
       enableCuda = true;
     })
     gcc5
-    gtk2
-    gtk3
     pkgconfig
   ];
   nativeBuildInputs = [ cmake ];
