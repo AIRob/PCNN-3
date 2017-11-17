@@ -1,7 +1,18 @@
 #ifndef __PCNN_H__
 #define __PCNN_H__
+#include <iostream>
 #include "opencv2/core.hpp"
 #include "opencv2/highgui.hpp"
+
+#define CHECK(call) {                                                   \
+  const cudaError_t error = call;                                       \
+  if(error != cudaSuccess){                                             \
+    std::cout << "Error: " << __FILE__ << " " << __LINE__ << std::endl; \
+    std::cout << "code: " << error << std::endl;                        \
+    std::cout << "reason: " << cudaGetErrorString(error) << std::endl;  \
+    exit(1);                                                            \
+  }                                                                     \
+}                                                                       \
 
 typedef struct {
   float beta;

@@ -11,16 +11,6 @@
 
 #include "pcnn.h"
 
-#define CHECK(call) {                                                   \
-  const cudaError_t error = call;                                       \
-  if(error != cudaSuccess){                                             \
-    std::cout << "Error: " << __FILE__ << __LINE__ << std::endl;        \
-    std::cout << "code:" << error << std::endl;                         \
-    std::cout << "reason: " << cudaGetErrorString(error) << std::endl;  \
-    exit(1);                                                            \
-  }                                                                     \
-}                                                                       \
-
 double cpuSecond(void){
   struct timeval tp;
   gettimeofday(&tp, NULL);
@@ -68,7 +58,9 @@ __device__ void fire_sum_on_gpu(
     __syncthreads();
   }
 
-  if(tid == 0) fire[blockIdx.x] = (int)impulse[0];
+  if(tid == 0){
+    fire[blockIdx.x] = (int)impulse[0];
+  }
 }
 
 __global__ void fire_renew_on_gpu(
@@ -88,6 +80,32 @@ __global__ void fire_renew_on_gpu(
   __syncthreads();
 
   fire_sum_on_gpu(dev_tmpY, fire, width, height);
+}
+
+__device__ float weights_work_calc(
+  float        *dev_weights,
+  float        *dev_Y,
+  unsigned int  kernel_size,
+  unsigned int  width,
+  unsigned int  height
+){
+  unsigned int x = threadIdx.x;
+  unsigned int y = blockIdx.x;
+
+  float W = 0.0;
+  for(int i = 0; i < kernel_size; i++){
+    for(int j = 0; j < kernel_size; j++){
+      if((int)y + (i - ((int)kernel_size/2)) >= 0
+         && (int)y + (i - ((int)kernel_size/2)) < (int)height
+         && (int)x + (j - ((int)kernel_size/2)) >= 0
+         && (int)x + (j - ((int)kernel_size/2)) < (int)width
+       ){
+        W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
+      }
+    }
+  }
+
+  return W;
 }
 
 __global__ void pcnn_on_gpu(
@@ -110,30 +128,17 @@ __global__ void pcnn_on_gpu(
   unsigned int  kernel_size
 ){
   unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  unsigned int x = threadIdx.x;
-  unsigned int y = blockIdx.x;
 
   if(idx >= width * height){
     return;
   }
 
-  // Processing threads correspond to image pixels.
   // weighted input from Y values
   float W = 0.0;
-  for(int i = 0; i < kernel_size; i++){
-    for(int j = 0; j < kernel_size; j++){
-      if((int)y + (i - ((int)kernel_size/2)) < 0
-         || (int)y + (i - ((int)kernel_size/2)) >= (int)height
-         || (int)x + (j - ((int)kernel_size/2)) < 0
-         || (int)x + (j - ((int)kernel_size/2)) >= (int)width
-         ){
-        continue;
-      }
-      W += dev_weights[(i * kernel_size) + j] * dev_Y[((y + (i - (kernel_size/2))) * width) + (x + (j - (kernel_size/2)))];
-    }
-  }
-  //printf("x: %d, y: %d, W: %lf\n", x, y, W);
+  W = weights_work_calc(dev_weights, dev_Y, kernel_size, width, height);
+  //printf("x: %d, y: %d, W: %lf\n", threadIdx.x, blockIdx.x, W);
 
+  // Processing threads correspond to image pixels.
   dev_F[idx] = dev_stimu[idx];
   dev_L[idx] = (expL * dev_L[idx]) + (vL * W);
   dev_U[idx] = dev_F[idx] * (1.0 + beta * dev_L[idx]);
@@ -225,55 +230,55 @@ int pcnn_gpu(
   fire = (unsigned int*)malloc(fireBytes);
   CHECK(cudaMalloc((unsigned int**)&dev_fire, fireBytes));
 
+  // Data transfer from host to device
+  CHECK(cudaMemcpy(dev_stimu, stimu, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_weights, weights, nWeightBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_F, F, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_L, L, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_U, U, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_T, T, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_Y, Y, nBytes, cudaMemcpyHostToDevice));
+  CHECK(cudaMemcpy(dev_tmpY, tmpY, nBytes, cudaMemcpyHostToDevice));
+
+  CHECK(cudaDeviceSynchronize());
+
+  // There are width number of threads in a block
+  dim3 pixels_in_line(parameter->width, 1);
+  // Number of all data element
+  dim3 lines_grid(((parameter->width * parameter->height) + pixels_in_line.x - 1) / pixels_in_line.x, 1);
+
   // PCNN processing
   for(int t = 0; t < parameter->time_steps; t++){
     iStart = cpuSecond();
 
-    // Data transfer from host to device
-    CHECK(cudaMemcpy(dev_stimu, stimu, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_weights, weights, nWeightBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_F, F, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_L, L, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_U, U, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_T, T, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_Y, Y, nBytes, cudaMemcpyHostToDevice));
-    CHECK(cudaMemcpy(dev_tmpY, tmpY, nBytes, cudaMemcpyHostToDevice));
-
-    CHECK(cudaDeviceSynchronize());
-
-    // There are width number of threads in a block
-    dim3 pixels_in_line(parameter->width, 1);
-    // Number of all data element
-    dim3 lines_grid(((parameter->width * parameter->height) + pixels_in_line.x - 1) / pixels_in_line.x, 1);
-
     pcnn_on_gpu<<<lines_grid, pixels_in_line>>>(
-                              dev_stimu,
-                              dev_weights,
-                              dev_F,
-                              dev_L,
-                              dev_U,
-                              dev_T,
-                              dev_Y,
-                              dev_tmpY,
-                              parameter->beta,
-                              parameter->vF,
-                              parameter->vL,
-                              parameter->vT,
-                              expL,
-                              expT,
-                              parameter->width,
-                              parameter->height,
-                              parameter->kernel_size
-                              );
+                                                dev_stimu,
+                                                dev_weights,
+                                                dev_F,
+                                                dev_L,
+                                                dev_U,
+                                                dev_T,
+                                                dev_Y,
+                                                dev_tmpY,
+                                                parameter->beta,
+                                                parameter->vF,
+                                                parameter->vL,
+                                                parameter->vT,
+                                                expL,
+                                                expT,
+                                                parameter->width,
+                                                parameter->height,
+                                                parameter->kernel_size
+                                                );
     CHECK(cudaDeviceSynchronize());
 
     // Data transfer from device to host
     //CHECK(cudaMemcpy(stimu, dev_stimu, nBytes, cudaMemcpyDeviceToHost));
     //CHECK(cudaMemcpy(weights, dev_weights, nWeightBytes, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(F, dev_F, nBytes, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(L, dev_L, nBytes, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(U, dev_U, nBytes, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(T, dev_T, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(F, dev_F, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(L, dev_L, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(U, dev_U, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(T, dev_T, nBytes, cudaMemcpyDeviceToHost));
 
     // Get PCNN-Icon
     for(int y = 0; y < parameter->height; y++){
@@ -289,8 +294,8 @@ int pcnn_gpu(
                                        );
     CHECK(cudaDeviceSynchronize());
 
-    CHECK(cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost));
-    CHECK(cudaMemcpy(tmpY, dev_tmpY, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost));
+    //CHECK(cudaMemcpy(tmpY, dev_tmpY, nBytes, cudaMemcpyDeviceToHost));
     CHECK(cudaMemcpy(fire, dev_fire, fireBytes, cudaMemcpyDeviceToHost));
 
     unsigned int icon = 0;

@@ -65,7 +65,7 @@ int main(int argc, char* argv[]){
   parameter.tauT = 2.5;
 
   parameter.time_steps = 100;
-  parameter.kernel_size = 10;
+  parameter.kernel_size = 11;
 
   parameter.hh = 1.0;
 
