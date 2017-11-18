@@ -294,7 +294,7 @@ int pcnn_gpu(
                                        );
     CHECK(cudaDeviceSynchronize());
 
-    //CHECK(cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost));
+    CHECK(cudaMemcpy(Y, dev_Y, nBytes, cudaMemcpyDeviceToHost));
     //CHECK(cudaMemcpy(tmpY, dev_tmpY, nBytes, cudaMemcpyDeviceToHost));
     CHECK(cudaMemcpy(fire, dev_fire, fireBytes, cudaMemcpyDeviceToHost));
 
@@ -317,7 +317,7 @@ int pcnn_gpu(
     if(output_images_to_file_flag != 0){
       char path[256];
       sprintf(path, "%s/%s_gpu_%03d.png", directory_name, directory_name, t);
-      save_float_gray_image(tmpY, parameter->width, parameter->height, path);
+      save_float_gray_image(Y, parameter->width, parameter->height, path);
     }
   }
 
